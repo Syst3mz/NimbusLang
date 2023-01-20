@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter};
 use logos::{Lexer, Logos, Span};
 use crate::nimbus_lexer::TokenType::LexErr;
 
@@ -121,6 +122,8 @@ pub enum TokenType {
 
     #[token("class")]
     Class,
+    #[token(",")]
+    Comma,
 
     #[regex("[a-zA-z_]([a-zA-z_0-9])*")]
     Identifier,
@@ -137,6 +140,64 @@ pub enum TokenType {
     #[regex(r"[ \t\n\f\r]+", logos::skip)]
     #[error]
     LexErr
+}
+
+impl Display for TokenType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, match self {
+            TokenType::QuestionMark => {}
+            TokenType::LAngleBracket => {}
+            TokenType::RAngleBracket => {}
+            TokenType::LBracket => {}
+            TokenType::RBracket => {}
+            TokenType::Colon => {}
+            TokenType::Fn => {}
+            TokenType::Dot => {}
+            TokenType::LParen => {}
+            TokenType::RParen => {}
+            TokenType::Arrow => {}
+            TokenType::Abstract => {}
+            TokenType::Public => {}
+            TokenType::Private => {}
+            TokenType::Protected => {}
+            TokenType::Super => {}
+            TokenType::This => {}
+            TokenType::True => {}
+            TokenType::False => {}
+            TokenType::None => {}
+            TokenType::Bang => {}
+            TokenType::Tack => {}
+            TokenType::Slash => {}
+            TokenType::Star => {}
+            TokenType::Plus => {}
+            TokenType::Geq => {}
+            TokenType::Leq => {}
+            TokenType::BangEquals => {}
+            TokenType::EqualsEquals => {}
+            TokenType::PipePipe => {}
+            TokenType::AndAnd => {}
+            TokenType::Equals => {}
+            TokenType::If => {}
+            TokenType::Else => {}
+            TokenType::LCurlyBrace => {}
+            TokenType::RCurlyBrace => {}
+            TokenType::While => {}
+            TokenType::Return => {}
+            TokenType::For => {}
+            TokenType::In => {}
+            TokenType::Semicolon => {}
+            TokenType::Enum => {}
+            TokenType::Use => {}
+            TokenType::As => {}
+            TokenType::Class => {}
+            TokenType::Identifier => {}
+            TokenType::Integer => {}
+            TokenType::Decimal => {}
+            TokenType::String => {}
+            TokenType::Char => {}
+            LexErr => {}
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
