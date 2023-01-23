@@ -1,8 +1,10 @@
 use std::fmt::{Display, Formatter};
 use logos::{Lexer, Logos, Span};
+use strum::Display;
+
 use crate::nimbus_lexer::TokenType::LexErr;
 
-#[derive(Copy, Clone, Debug, PartialEq, Logos)]
+#[derive(Copy, Clone, Debug, PartialEq, Logos, Display)]
 pub enum TokenType {
     #[token("?")]
     QuestionMark,
