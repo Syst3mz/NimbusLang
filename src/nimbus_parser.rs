@@ -1,4 +1,4 @@
-use std::iter::Peekable;
+/*use std::iter::Peekable;
 use std::slice::Iter;
 use crate::counter::{Counted, Counter};
 use crate::nimbus_ast::{Ast, AstDecl};
@@ -157,4 +157,4 @@ impl From<Vec<Token>> for Parser {
             idx: 0
         }
     }
-}
+}*/
