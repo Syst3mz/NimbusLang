@@ -71,5 +71,5 @@ fn check() {
     for lexed in lex {
         println!("{:?}", lexed)
     }
-    assert!(true)
+    assert!(false)
 }
