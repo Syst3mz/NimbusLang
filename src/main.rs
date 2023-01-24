@@ -1,8 +1,5 @@
 use std::path::PathBuf;
 use std::fs;
-use crate::lr_generator::{Rule};
-use crate::lr_generator::NonTerminal::{All, Any, Application, Optional, Plus};
-use crate::lr_generator::Rule::{NonTerminal, Terminal};
 use crate::nimbus_lexer::TokenType;
 
 mod nimbus_lexer;
