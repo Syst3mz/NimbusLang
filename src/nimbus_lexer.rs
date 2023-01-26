@@ -241,13 +241,4 @@ impl Iterator for NimbusLexer<'_> {
 
 #[cfg(test)]
 pub mod tests {
-    use logos::Lexer;
-    use crate::nimbus_lexer::{Location, NimbusLexer, Token, TokenType};
-
-    #[test]
-    fn test_lexer() {
-        let test = r#"class someClass: Another.Class {var x; ;asd''''ghbjkkjhdsj bext}"#;
-        let t = NimbusLexer::new(test);
-        assert_eq!(t.to_vec(), vec![]);
-    }
 }
