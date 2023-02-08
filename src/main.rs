@@ -6,8 +6,10 @@ mod nimbus_lexer;
 mod nimbus_parser;
 mod nimbus_ast;
 mod either;
-mod counter;
 mod lr_generator;
+mod lr_lexer;
+mod lr_ast;
+mod lr_parser;
 
 
 fn main() {

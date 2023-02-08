@@ -1,12 +1,11 @@
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
-use crate::counter::Counted;
 use crate::either::Either;
 use crate::nimbus_lexer::Location;
 
 
-#[derive(Debug)]
+/*#[derive(Debug)]
 pub struct Ast {
     pub tree: Vec<Counted<AstDecl>>,
     pub locations: HashMap<usize, Location>
@@ -70,4 +69,4 @@ pub enum TypeLiteral {
     ArrayType(Box<TypeLiteral>),
     GenericType(String, Vec<TypeLiteral>),
     OptionType(Box<TypeLiteral>)
-}
+}*/
