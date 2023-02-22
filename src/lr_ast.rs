@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter};
 use regex::Regex;
 
 #[derive(Debug, Clone)]
@@ -6,7 +7,7 @@ pub(crate) struct Decl {
     pub(crate) maps_to: NonTerminal
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum BinaryOperation {
     Or,
     Concat
