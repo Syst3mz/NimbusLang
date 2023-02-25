@@ -11,7 +11,6 @@ mod lr_lexer;
 mod lr_ast;
 mod lr_parser;
 mod lr_ir;
-mod lr_generator;
 
 
 fn main() {
