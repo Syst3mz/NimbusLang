@@ -1,9 +1,10 @@
 use regex::Regex;
 use crate::lr_ast;
+use crate::lr_ast::BinaryOperation;
 use crate::lr_ir::BinaryOperation::{Concat, Or};
-use crate::lr_ir::NonTerminal::{Binary, Term, Unary};
+use crate::lr_ir::IrError::IllegalUnary;
+use crate::lr_ir::NonTerminal::Term;
 use crate::lr_ir::Terminal::{Empty, Identifier, StringLiteral};
-use crate::lr_ir::UnaryOperation::{Optional, Plus, Star};
 
 #[derive(Debug, Clone)]
 pub(crate) struct Decl {
@@ -12,29 +13,8 @@ pub(crate) struct Decl {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum BinaryOperation {
-    Or,
-    Concat
-}
-
-#[derive(Debug, Clone)]
-pub(crate) enum UnaryOperation {
-    Plus,
-    Star,
-    Optional
-}
-
-#[derive(Debug, Clone)]
 pub(crate) enum NonTerminal {
-    Binary {
-        operands: Vec<NonTerminal>,
-        bop: BinaryOperation
-    },
-
-    Unary {
-        uop: UnaryOperation,
-        lhs: Box<NonTerminal>
-    },
+    Concat(Vec<NonTerminal>),
     Term(Terminal)
 }
 
@@ -45,80 +25,139 @@ pub(crate) enum Terminal {
     Empty
 }
 
-pub(crate) fn linearize(input: &Vec<lr_ast::Decl>) -> Vec<Decl> {
-    let mut ret:Vec<Decl> = vec![];
-    for decl in input {
-       ret.push(Decl {
-           identifier: decl.identifier.clone(),
-           maps_to: linearize_recursive(&decl.maps_to),
-       })
-    }
-
-    ret
+#[derive(Debug)]
+pub(crate) enum IrError {
+    IllegalUnary(lr_ast::NonTerminal)
 }
 
-fn linearize_recursive(nt: &lr_ast::NonTerminal) -> NonTerminal {
+pub(crate) fn transform(input: &Vec<lr_ast::Decl>) -> Result<Vec<Decl>, IrError> {
+    let mut ret: Vec<Decl> = vec![];
+    for decl in input {
+        let t = transform_decl(&mut ret, decl)?;
+       ret.push(t)
+    }
+
+    Ok(ret)
+}
+
+fn transform_decl(internal_vec:&mut Vec<Decl>, decl: &lr_ast::Decl) -> Result<Decl, IrError> {
+    Ok(Decl {
+        identifier: decl.identifier.clone(),
+        maps_to: transform_non_terminal(internal_vec, &decl.maps_to)?,
+    })
+}
+
+fn transform_non_terminal(internal_vec: &mut Vec<Decl>, nt: &lr_ast::NonTerminal) -> Result<NonTerminal, IrError> {
     match nt {
         lr_ast::NonTerminal::Binary { lhs, rhs, bop } => {
-            Binary {
-                operands: linearize_bops(lhs, rhs, bop),
-                bop: match bop {
-                    lr_ast::BinaryOperation::Or => {Or}
-                    lr_ast::BinaryOperation::Concat => {Concat}
-                },
-            }
+            transform_binary(internal_vec, lhs.as_ref(), rhs.as_ref(), bop)
         }
-        lr_ast::NonTerminal::Unary { uop, lhs } => {
-            Unary {
-                uop: match uop {
-                    lr_ast::UnaryOperation::Plus => {Plus}
-                    lr_ast::UnaryOperation::Star => {Star}
-                    lr_ast::UnaryOperation::Optional => {Optional}
-                },
-                lhs: Box::new(linearize_recursive(lhs)),
-            }
+        lr_ast::NonTerminal::Unary { .. } => {
+            Err(IllegalUnary(nt.clone()))
         }
-        lr_ast::NonTerminal::Term(term) => {Term(match term {
-            lr_ast::Terminal::Identifier(id) => {Identifier(id.clone())}
-            lr_ast::Terminal::StringLiteral(reg) => {StringLiteral(reg.clone())}
-            lr_ast::Terminal::Empty => {Empty}
-        })}
+        lr_ast::NonTerminal::Term(t) => {
+            Ok(Term(match t {
+                lr_ast::Terminal::Identifier(i) => Identifier(i.clone()),
+                lr_ast::Terminal::StringLiteral(s) => StringLiteral(s.clone()),
+                lr_ast::Terminal::Empty => Empty
+            }))
+        }
     }
 }
 
-fn linearize_bops(c_lhs: &lr_ast::NonTerminal, c_rhs: &lr_ast::NonTerminal, c_bop:&lr_ast::BinaryOperation) -> Vec<NonTerminal> {
-    let mut ret: Vec<NonTerminal> = vec![];
-    match c_lhs {
-        lr_ast::NonTerminal::Binary { lhs, rhs, bop } => {
-            if bop == c_bop {
-                ret.append(&mut linearize_bops(lhs, rhs, bop))
+fn transform_binary(internal_vec: &mut Vec<Decl>,
+                    lhs: &lr_ast::NonTerminal,
+                    rhs: &lr_ast::NonTerminal,
+                    bop: &BinaryOperation) -> Result<NonTerminal, IrError> {
+    let collected = collect_binary(internal_vec, lhs, rhs, bop)?;
+
+    match bop {
+        Or => {
+            let id = format!("II_OR_EXPAND_{}_II", internal_vec.len());
+            for item in collected {
+                internal_vec.push(Decl {
+                    identifier: id.clone(),
+                    maps_to: item,
+                })
             }
-            else {
-                ret.push(linearize_recursive(c_lhs))
-            }
+            Ok(Term(Identifier(id)))
         }
-        nt => ret.push(linearize_recursive(nt))
+        Concat => Ok(NonTerminal::Concat(collected))
     }
-    ret.push(linearize_recursive(c_rhs));
-    ret
+}
+
+fn collect_binary(internal_vec: &mut Vec<Decl>, c_lhs: &lr_ast::NonTerminal, c_rhs: &lr_ast::NonTerminal, c_bop: &BinaryOperation) -> Result<Vec<NonTerminal>, IrError> {
+    let mut tmp:Vec<NonTerminal> = vec![];
+    collect_binary_helper(&mut tmp, internal_vec, c_lhs, c_bop)?;
+    tmp.push(transform_non_terminal(internal_vec, c_rhs)?);
+
+
+    Ok(tmp)
+}
+
+fn collect_binary_helper(ret: &mut Vec<NonTerminal>, internal_vec: &mut Vec<Decl>, item: &lr_ast::NonTerminal, c_bop: &BinaryOperation) -> Result<(), IrError> {
+    if let lr_ast::NonTerminal::Binary { lhs, rhs, bop } = item {
+        if bop == c_bop {
+            ret.append(&mut collect_binary(internal_vec, lhs, rhs, bop)?)
+        }
+        else {
+            ret.push(transform_non_terminal(internal_vec, lhs)?)
+        }
+    } else {
+        ret.push(transform_non_terminal(internal_vec, item)?)
+    }
+    Ok(())
 }
 
 #[cfg(test)]
-pub mod tests {
+pub mod test {
     use crate::lr_augmenter::LrAugmenter;
-    use crate::lr_ir::linearize;
+    use crate::lr_ir::{Decl, transform};
+    use crate::lr_ir::NonTerminal::{Concat, Term};
+    use crate::lr_ir::Terminal::Identifier;
 
     #[test]
-    pub fn harder_bop_collapse() {
-        let g = "a -> (b c) | (d e) f+";
+    pub fn simple_or_concat() {
+        let g = r#"a -> (b e) | c | d"#;
         let mut generator = LrAugmenter::new(g).unwrap();
-        println!("simple bop: {:#?}", linearize(generator.augment_grammar()));
+        generator.augment_grammar();
+        let t = transform(&generator.decls).unwrap();
+        println!("simple or and concat collapse: {:#?}", t)
     }
 
     #[test]
-    pub fn simple_bop_collapse() {
-        let g = "a -> b c d";
+    pub fn simple_or_collapse() {
+        let g = r#"a -> b | c | d"#;
         let mut generator = LrAugmenter::new(g).unwrap();
-        println!("simple bop: {:#?}", linearize(generator.augment_grammar()));
+        generator.augment_grammar();
+        let t = transform(&generator.decls).unwrap();
+        println!("simple or collapse: {:#?}", t)
+    }
+
+    #[test]
+    pub fn simple_concat_collapse() {
+        let g = r#"a -> b c d"#;
+        let mut generator = LrAugmenter::new(g).unwrap();
+        generator.augment_grammar();
+        let t = transform(&generator.decls).unwrap();
+        println!("simple concat collapse: {:#?}", t)
+    }
+
+    #[test]
+    pub fn initial_test() {
+        let g = r#"decl         -> IDENTIFIER "->" nonterminal
+nonterminal  -> terminal
+			  | nonterminal "|" nonterminal
+			  | nonterminal nonterminal
+			  | nonterminal "+"
+			  | nonterminal "*"
+			  | nonterminal "?"
+			  | "\(" nonterminal "\)"
+terminal     -> REGEX
+			  | IDENTIFIER"#;
+        let mut generator = LrAugmenter::new(g).unwrap();
+        generator.augment_grammar();
+        let t = transform(&generator.decls).unwrap();
+        println!("initial_test: {:#?}", t)
     }
 }

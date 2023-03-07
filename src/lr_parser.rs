@@ -166,7 +166,7 @@ impl<'source> LRParser {
         return if let Some(tok) = self.lexed.next()  {
             match tok.token_type {
                 StringLiteral => {
-                    let regex = Regex::from_str(tok.lexeme.as_str());
+                    let regex = Regex::from_str(&tok.lexeme.as_str()[1..tok.lexeme.len() - 1]);
                     match regex {
                         Ok(reg) => { Ok(Terminal::StringLiteral(reg)) }
                         Err(e) => { Err(InvalidRegex(e)) }
@@ -185,7 +185,10 @@ impl<'source> LRParser {
 
 #[cfg(test)]
 pub(crate) mod test {
-    use crate::lr_ast::Terminal::StringLiteral;
+    use regex::Regex;
+    use crate::lr_ast::{BinaryOperation, Decl, UnaryOperation};
+    use crate::lr_ast::NonTerminal::{Binary, Term, Unary};
+    use crate::lr_ast::Terminal::{Identifier, StringLiteral};
     use crate::lr_lexer::{LRLexer, LRToken, Token};
     use crate::lr_parser::LRParser;
 
@@ -194,22 +197,57 @@ pub(crate) mod test {
     fn check_parser_1_rule() {
         let g = r#"decl -> stmnt stmnt2"#;
         let r = LRParser::new(g).parse();
-        println!("1 rule: {:?}", r.unwrap());
+        assert_eq!(r.unwrap(), vec![
+            Decl {
+                identifier: "decl".to_string(),
+                maps_to: Binary {
+                    lhs: Box::new(Term(Identifier("stmnt".to_string()))),
+                    rhs: Box::new(Term(Identifier("stmnt2".to_string()))),
+                    bop: BinaryOperation::Concat,
+                },
+            }
+        ])
     }
 
     #[test]
     fn check_parser_1_rule_many() {
         let g = r#"decl -> stmnt stmnt2 stmnt3 stmnt4"#;
         let r = LRParser::new(g).parse();
-        println!("1 rule many: {:?}", r.unwrap());
+        assert_eq!(r.unwrap(), vec![
+            Decl {
+                identifier: "decl".to_string(),
+                maps_to: Binary {
+                    lhs: Box::new(Binary {
+                        lhs: Box::new(Binary {
+                            lhs: Box::new(Term(Identifier("stmnt".to_string()))),
+                            rhs: Box::new(Term(Identifier("stmnt2".to_string()))),
+                            bop: BinaryOperation::Concat,
+                        }),
+                        rhs: Box::new(Term(Identifier("stmnt3".to_string()))),
+                        bop: BinaryOperation::Concat,
+                    }),
+                    rhs: Box::new(Term(Identifier("stmnt4".to_string()))),
+                    bop: BinaryOperation::Concat,
+                },
+            }
+        ])
     }
 
     #[test]
     fn check_parser_two_rules_each_singles() {
         let g = r#"decl -> stmnt
-         decl2 -> stmnt3"#;
+         decl2 -> stmnt2"#;
         let r = LRParser::new(g).parse();
-        println!("two singles: {:?}", r.unwrap());
+        assert_eq!(r.unwrap(), vec![
+            Decl {
+                identifier: "decl".to_string(),
+                maps_to: Term(Identifier("stmnt".to_string())),
+            },
+            Decl {
+                identifier: "decl2".to_string(),
+                maps_to: Term(Identifier("stmnt2".to_string())),
+            }
+        ])
     }
 
     #[test]
@@ -217,64 +255,133 @@ pub(crate) mod test {
         let g = r#"decl -> stmnt stmnt2
          decl2 -> stmnt3"#;
         let r = LRParser::new(g).parse();
-        println!("two mutli: {:?}", r.unwrap());
+        assert_eq!(r.unwrap(), vec![
+            Decl {
+                identifier: "decl".to_string(),
+                maps_to: Binary {
+                    lhs: Box::new(Term(Identifier("stmnt".to_string()))),
+                    rhs: Box::new( Term(Identifier("stmnt2".to_string()))),
+                    bop: BinaryOperation::Concat,
+                }
+            },
+            Decl {
+                identifier: "decl2".to_string(),
+                maps_to: Term(Identifier("stmnt3".to_string())),
+            }
+        ])
     }
 
     #[test]
     fn check_parser_paren() {
         let g = r#"decl -> (a)"#;
         let r = LRParser::new(g).parse();
-        println!("paren: {:?}", r.unwrap());
+        assert_eq!(r.unwrap(), vec![
+            Decl {
+                identifier: "decl".to_string(),
+                maps_to: Term(Identifier("a".to_string())),
+            }
+        ])
     }
 
     #[test]
     fn check_parser_paren_after() {
         let g = r#"decl -> (a) b"#;
         let r = LRParser::new(g).parse();
-        println!("paren: {:?}", r.unwrap());
+        assert_eq!(r.unwrap(), vec![
+            Decl {
+                identifier: "decl".to_string(),
+                maps_to: Binary {
+                    lhs: Box::new(Term(Identifier("a".to_string()))),
+                    rhs: Box::new(Term(Identifier("b".to_string()))),
+                    bop: BinaryOperation::Concat,
+                },
+            }
+        ])
     }
 
     #[test]
     fn check_parser_postfix_1() {
         let g = r#"decl -> a+"#;
         let r = LRParser::new(g).parse();
-        println!("postfix: {:?}", r.unwrap());
+        assert_eq!(r.unwrap(), vec![
+            Decl {
+                identifier: "decl".to_string(),
+                maps_to: Unary {
+                    uop: UnaryOperation::Plus,
+                    lhs: Box::new(Term(Identifier("a".to_string()))),
+                },
+            }
+        ])
     }
 
     #[test]
     fn check_parser_postfix_2() {
         let g = r#"decl -> a b+"#;
         let r = LRParser::new(g).parse();
-        println!("postfix 2: {:?}", r.unwrap());
+        assert_eq!(r.unwrap(), vec![
+            Decl {
+                identifier: "decl".to_string(),
+                maps_to: Binary {
+                    lhs: Box::new(Term(Identifier("a".to_string()))),
+                    rhs: Box::new(Unary {
+                        uop: UnaryOperation::Plus,
+                        lhs: Box::new(Term(Identifier("b".to_string()))),
+                    }),
+                    bop: BinaryOperation::Concat,
+                },
+            }
+        ])
     }
 
     #[test]
     fn check_or() {
         let g = r#"decl -> a | b"#;
         let r = LRParser::new(g).parse();
-        println!("check or: {:?}", r.unwrap());
+        assert_eq!(r.unwrap(), vec![
+            Decl {
+                identifier: "decl".to_string(),
+                maps_to: Binary {
+                    lhs: Box::new(Term(Identifier("a".to_string()))),
+                    rhs: Box::new(Term(Identifier("b".to_string()))),
+                    bop: BinaryOperation::Or,
+                },
+            }
+        ])
     }
 
     #[test]
     fn check_infix_string_literal() {
         let g = r#"decl -> a "a" b"#;
         let r = LRParser::new(g).parse();
-        println!("infix literal: {:?}", r.unwrap());
+        assert_eq!(r.unwrap(), vec![
+            Decl {
+                identifier: "decl".to_string(),
+                maps_to: Binary {
+                    lhs: Box::new(Binary {
+                        lhs: Box::new(Term(Identifier("a".to_string()))),
+                        rhs: Box::new(Term(StringLiteral(Regex::new("a").unwrap()))),
+                        bop: BinaryOperation::Concat,
+                    }),
+                    rhs: Box::new(Term(Identifier("b".to_string()))),
+                    bop: BinaryOperation::Concat,
+                },
+            }
+        ])
     }
 
     #[test]
     fn parse_self() {
         let g = r#"decl         -> IDENTIFIER "->" nonterminal
 nonterminal  -> terminal
-			  | nonterminal "|" nonterminal
+			  | nonterminal "\|" nonterminal
 			  | nonterminal nonterminal
-			  | nonterminal "+"
-			  | nonterminal "*"
-			  | nonterminal "?"
+			  | nonterminal "\+"
+			  | nonterminal "\*"
+			  | nonterminal "\?"
 			  | "\(" nonterminal "\)"
 terminal     -> REGEX
 			  | IDENTIFIER"#;
         let r = LRParser::new(g).parse();
-        println!("parse self: {:?}", r.unwrap());
+        println!("parse self: {:#?}", r.unwrap());
     }
 }

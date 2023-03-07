@@ -1,7 +1,9 @@
 use std::fmt::{Display, Formatter};
 use regex::Regex;
+use crate::lr_ast;
+use crate::lr_ast::Terminal::{Empty, Identifier, StringLiteral};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Decl {
     pub(crate) identifier: String,
     pub(crate) maps_to: NonTerminal
@@ -13,14 +15,14 @@ pub(crate) enum BinaryOperation {
     Concat
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum UnaryOperation {
     Plus,
     Star,
     Optional
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum NonTerminal {
     Binary {
         lhs: Box<NonTerminal>,
@@ -40,4 +42,39 @@ pub(crate) enum Terminal {
     Identifier(String),
     StringLiteral(Regex),
     Empty
+}
+
+impl PartialEq for Terminal {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (StringLiteral(r), StringLiteral(r2)) => r.to_string().eq(&r2.to_string()),
+            (Identifier(s), Identifier(s2)) => s.eq(s2),
+            (Empty, Empty) => true,
+            (_, _) => false
+        }
+    }
+}
+
+impl Eq for Terminal {}
+
+
+#[cfg(test)]
+mod test {
+    use regex::Regex;
+    use crate::lr_ast::Terminal::{Empty, Identifier};
+
+    #[test]
+    fn test_eq_e_2_e() {
+        assert_eq!(Empty, Empty)
+    }
+
+    #[test]
+    fn test_eq_cat_2_cat() {
+        assert_eq!(Identifier("cat".to_string()), Identifier("cat".to_string()))
+    }
+
+    #[test]
+    fn test_eq_cat_2_cot() {
+        assert_ne!(Identifier("cat".to_string()), Identifier("cot".to_string()))
+    }
 }

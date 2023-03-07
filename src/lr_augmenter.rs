@@ -1,11 +1,13 @@
 use std::collections::{HashMap, HashSet};
+use std::fmt::format;
 use std::hash::Hash;
 use std::io::empty;
 use crate::lr_ast::{BinaryOperation, Decl, NonTerminal, Terminal, UnaryOperation};
 use crate::lr_ast::NonTerminal::{Binary, Term, Unary};
 use crate::lr_ast::Terminal::{Empty, Identifier};
 use crate::lr_augmenter::GeneratorErr::ParserErr;
-use crate::lr_parser;
+use crate::{lr_ast, lr_parser};
+use crate::lr_lexer::LRToken::Or;
 use crate::lr_parser::{LRParser};
 
 #[derive(Debug)]
@@ -21,7 +23,7 @@ impl From<lr_parser::ParserErr> for GeneratorErr {
 
 #[derive(Debug)]
 pub(crate) struct LrAugmenter {
-    pub backing_vec: Vec<Decl>
+    pub decls: Vec<Decl>
 }
 
 impl LrAugmenter {
@@ -37,50 +39,29 @@ impl LrAugmenter {
             backing_vec.push(decl);
         }
 
-        Ok(Self { backing_vec } )
+        Ok(Self { decls: backing_vec } )
     }
 
     pub(crate) fn augment_grammar(&mut self) {
         let mut idx = 0;
-        while idx < self.backing_vec.len() {
-            self.backing_vec[idx].maps_to = self.augment_production(self.backing_vec[idx].maps_to.clone());
+        while idx < self.decls.len() {
+            self.decls[idx].maps_to = self.augment_production(self.decls[idx].maps_to.clone());
             idx += 1;
         }
-
-        self.augment_grammar_with_starting_production();
     }
 
-    fn augment_or(&mut self, lhs: NonTerminal, rhs: NonTerminal) -> NonTerminal {
-        let lhs = self.augment_production(lhs);
-        let rhs = self.augment_production(rhs);
-        let id = format!("II_OR_EXPAND_{}_II", self.backing_vec.len() + 1);
-        self.backing_vec.push(Decl {
-            identifier: id.clone(),
-            maps_to: lhs
-        });
-        self.backing_vec.push(Decl {
-            identifier: id.clone(),
-            maps_to: rhs
-        });
-        Term(Identifier(id))
-    }
 
     fn augment_production(&mut self, nt: NonTerminal) -> NonTerminal {
         match nt {
             Binary { lhs, rhs, bop } => {
-                match bop {
-                    BinaryOperation::Or => {
-                        self.augment_or(*lhs, *rhs)
-                    }
-                    BinaryOperation::Concat => {
-                        Binary {
-                            lhs: Box::new(self.augment_production(*lhs)) ,
-                            rhs: Box::new(self.augment_production(*rhs)), bop}
-                    }
+                Binary {
+                    lhs: Box::new(self.augment_production(*lhs)),
+                    rhs: Box::new(self.augment_production(*rhs)),
+                    bop,
                 }
-            },
+            }
             Unary { uop, lhs } => self.augment_unary(uop, lhs),
-            Term(_) => nt
+            _ => nt
         }
     }
     fn augment_unary(&mut self, uop: UnaryOperation, lhs: Box<NonTerminal>) -> NonTerminal {
@@ -104,8 +85,8 @@ impl LrAugmenter {
     }
 
     fn augment_klein_plus(&mut self, lhs: Box<NonTerminal>) -> NonTerminal {
-        let id = format!("II_PLUS_EXPAND_{}_II", self.backing_vec.len()+1);
-        self.backing_vec.push(Decl {
+        let id = format!("II_PLUS_EXPAND_{}_II", self.decls.len()+1);
+        self.decls.push(Decl {
             identifier: id.clone(),
             maps_to: Binary {
                 lhs: lhs.clone(),
@@ -122,14 +103,14 @@ impl LrAugmenter {
 
     fn find_dangling_ids(&self) -> Vec<String> {
         let mut ids_on_right:HashSet<String> = HashSet::new();
-        for decl in &self.backing_vec {
+        for decl in &self.decls {
             for term in Self::find_ids(&decl.maps_to) {
                 ids_on_right.insert(term);
             }
         }
 
         let mut ids_unused: Vec<String> = vec![];
-        for decl in &self.backing_vec {
+        for decl in &self.decls {
             if !ids_on_right.contains(&decl.identifier) {
                 ids_unused.push(decl.identifier.clone());
             }
@@ -161,7 +142,7 @@ impl LrAugmenter {
     pub(crate) fn augment_grammar_with_starting_production(&mut self) {
         let dangling = self.find_dangling_ids();
         for dangle in dangling {
-            self.backing_vec.push( Decl {
+            self.decls.push( Decl {
                 identifier: "II_INITIAL_PRODUCTION_II".to_string(),
                 maps_to: Term(Identifier(dangle)),
             })
@@ -169,73 +150,40 @@ impl LrAugmenter {
     }
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct IdentifierTree {
-    id: String,
-    children: Vec<IdentifierTree>
-}
-
 #[cfg(test)]
 pub mod tests {
+    use regex::Regex;
+    use crate::lr_ast::{BinaryOperation, Decl, NonTerminal};
+    use crate::lr_ast::BinaryOperation::{Concat, Or};
+    use crate::lr_ast::NonTerminal::{Binary, Term};
+    use crate::lr_ast::Terminal::{Empty, Identifier, StringLiteral};
     use crate::lr_augmenter::LrAugmenter;
 
-    #[test]
-    pub fn simple_test() {
-        let g = r#"A -> b?"#;
-        let mut generator = LrAugmenter::new(g).unwrap();
-        generator.augment_grammar();
-        println!("simple_test: {:#?}", generator.backing_vec);
-    }
-
-    #[test]
-    pub fn add_starting_production() {
-        let g = r#"decl         -> IDENTIFIER "->" nonterminal
+    static SELF_G: &str = r#"decl         -> IDENTIFIER "->" nonterminal
 nonterminal  -> terminal
-			  | nonterminal "|" nonterminal
+			  | nonterminal "\|" nonterminal
 			  | nonterminal nonterminal
-			  | nonterminal "+"
-			  | nonterminal "*"
-			  | nonterminal "?"
+			  | nonterminal "\+"
+			  | nonterminal "\*"
+			  | nonterminal "\?"
 			  | "\(" nonterminal "\)"
 terminal     -> REGEX
 			  | IDENTIFIER"#;
-        let mut generator = LrAugmenter::new(g).unwrap();
+
+    #[test]
+    pub fn add_starting_production() {
+
+        let mut generator = LrAugmenter::new(SELF_G).unwrap();
         generator.augment_grammar();
-        println!("add starting production: {:#?}", generator.backing_vec);
+        generator.augment_grammar_with_starting_production();
+        println!("add starting production: {:#?}", generator.decls);
     }
 
     #[test]
     pub fn find_dangling_ids() {
-        let g = r#"decl         -> IDENTIFIER "->" nonterminal
-nonterminal  -> terminal
-			  | nonterminal "|" nonterminal
-			  | nonterminal nonterminal
-			  | nonterminal "+"
-			  | nonterminal "*"
-			  | nonterminal "?"
-			  | "\(" nonterminal "\)"
-terminal     -> REGEX
-			  | IDENTIFIER"#;
-        let mut generator = LrAugmenter::new(g).unwrap();
+        let mut generator = LrAugmenter::new(SELF_G).unwrap();
         generator.augment_grammar();
-        println!("find_dangling_ids: {:#?}", generator.find_dangling_ids());
-    }
-
-    #[test]
-    pub fn try_parse_self() {
-        let g = r#"decl         -> IDENTIFIER "->" nonterminal
-nonterminal  -> terminal
-			  | nonterminal "|" nonterminal
-			  | nonterminal nonterminal
-			  | nonterminal "+"
-			  | nonterminal "*"
-			  | nonterminal "?"
-			  | "\(" nonterminal "\)"
-terminal     -> REGEX
-			  | IDENTIFIER"#;
-        let mut generator = LrAugmenter::new(g).unwrap();
-        generator.augment_grammar();
-        println!("try parse self: {:#?}", generator.backing_vec);
+        assert_eq!(vec!["decl"], generator.find_dangling_ids());
     }
 
     #[test]
@@ -243,7 +191,45 @@ terminal     -> REGEX
         let g = r#"E -> "a"+ b"#;
         let mut generator = LrAugmenter::new(g).unwrap();
         generator.augment_grammar();
-        println!("klein plus expansion harder: {:#?}", generator.backing_vec);
+        println!("klein plus expansion harder: {:#?}", generator.decls);
+    }
+
+    #[test]
+    pub fn test_paren_work() {
+        let g = r#"E -> (a b)"#;
+        let mut generator = LrAugmenter::new(g).unwrap();
+        generator.augment_grammar();
+        assert_eq!(generator.decls, vec![
+            Decl {
+                identifier: "E".to_string(),
+                maps_to: Binary {
+                    lhs: Box::new(Term(Identifier("a".to_string()))),
+                    rhs: Box::new(Term(Identifier("b".to_string()))),
+                    bop: BinaryOperation::Concat,
+                },
+            },
+        ])
+    }
+
+    #[test]
+    pub fn test_paren_work_harder() {
+        let g = r#"E -> (a b) | c "#;
+        let mut generator = LrAugmenter::new(g).unwrap();
+        generator.augment_grammar();
+        assert_eq!(generator.decls, vec![
+            Decl {
+                identifier: "E".to_string(),
+                maps_to: Binary {
+                    lhs: Box::new(Binary {
+                        lhs: Box::new(Term(Identifier("a".to_string()))),
+                        rhs: Box::new(Term(Identifier("b".to_string()))),
+                        bop: BinaryOperation::Concat,
+                    }),
+                    rhs: Box::new(Term(Identifier("c".to_string()))),
+                    bop: BinaryOperation::Or,
+                },
+            },
+        ])
     }
 
     #[test]
@@ -251,7 +237,7 @@ terminal     -> REGEX
         let g = r#"E -> "a"+"#;
         let mut generator = LrAugmenter::new(g).unwrap();
         generator.augment_grammar();
-        println!("klein plus expansion: {:#?}", generator.backing_vec);
+        println!("klein plus expansion: {:#?}", generator.decls);
     }
 
     #[test]
@@ -259,7 +245,40 @@ terminal     -> REGEX
         let g = r#"E -> "a"*"#;
         let mut generator = LrAugmenter::new(g).unwrap();
         generator.augment_grammar();
-        println!("klein plus expansion: {:#?}", generator.backing_vec);
+        assert_eq!(generator.decls, vec![
+            Decl {
+                identifier: "E".to_string(),
+                maps_to: Binary {
+                    lhs: Box::new(Term(Identifier("II_PLUS_EXPAND_2_II".to_string()))),
+                    rhs: Box::new(Term(Empty)),
+                    bop: BinaryOperation::Or,
+                },
+            },
+            Decl {
+                identifier: "II_PLUS_EXPAND_2_II".to_string(),
+                maps_to: Binary {
+                    lhs: Box::new(Term(
+                        StringLiteral(
+                            Regex::new("a").unwrap(),
+                        ),
+                    )),
+                    rhs: Box::new(Binary {
+                        lhs: Box::new(Term(
+                            StringLiteral(
+                                Regex::new("a").unwrap(),
+                            ),
+                        )),
+                        rhs: Box::new(Term(
+                            Identifier(
+                                "II_PLUS_EXPAND_2_II".to_string(),
+                            ),
+                        )),
+                        bop: Concat,
+                    }),
+                    bop: Or,
+                },
+            },
+        ])
     }
 
     #[test]
@@ -267,21 +286,15 @@ terminal     -> REGEX
         let g = r#"E -> "a"?"#;
         let mut generator = LrAugmenter::new(g).unwrap();
         generator.augment_grammar();
-        println!("optional : {:#?}", generator.backing_vec);
-    }
-
-    #[test]
-    pub fn make_sure_nothing_broke_between_phases() {
-        let g = r#"decl         -> IDENTIFIER "->" nonterminal
-nonterminal  -> terminal
-			  | nonterminal "|" nonterminal
-			  | nonterminal nonterminal
-			  | nonterminal "+"
-			  | nonterminal "*"
-			  | nonterminal "?"
-			  | "\(" nonterminal "\)"
-terminal     -> REGEX
-			  | IDENTIFIER"#;
-        println!("working as intended: {:?}", LrAugmenter::new(g).unwrap());
+        assert_eq!(generator.decls, vec![
+            Decl {
+                identifier: "E".to_string(),
+                maps_to: Binary {
+                    lhs: Box::new(Term(StringLiteral(Regex::new("a").unwrap()))),
+                    rhs: Box::new(Term(Empty)),
+                    bop: Or
+                },
+            }
+        ])
     }
 }
