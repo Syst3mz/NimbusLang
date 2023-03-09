@@ -86,12 +86,13 @@ impl LrAugmenter {
 
     fn augment_klein_plus(&mut self, lhs: Box<NonTerminal>) -> NonTerminal {
         let id = format!("II_PLUS_EXPAND_{}_II", self.decls.len()+1);
+        let augmented_lhs = self.augment_production(*lhs.clone());
         self.decls.push(Decl {
             identifier: id.clone(),
             maps_to: Binary {
-                lhs: lhs.clone(),
+                lhs: Box::new(augmented_lhs.clone()),
                 rhs: Box::new(Binary {
-                    lhs: lhs.clone(),
+                    lhs: Box::new(augmented_lhs.clone()),
                     rhs: Box::new(Term(Identifier(id.clone()))),
                     bop: BinaryOperation::Concat,
                 }),
@@ -158,6 +159,7 @@ pub mod tests {
     use crate::lr_ast::NonTerminal::{Binary, Term};
     use crate::lr_ast::Terminal::{Empty, Identifier, StringLiteral};
     use crate::lr_augmenter::LrAugmenter;
+    use crate::nimbus_lexer::TokenType::String;
 
     static SELF_G: &str = r#"decl         -> IDENTIFIER "->" nonterminal
 nonterminal  -> terminal
@@ -191,7 +193,28 @@ terminal     -> REGEX
         let g = r#"E -> "a"+ b"#;
         let mut generator = LrAugmenter::new(g).unwrap();
         generator.augment_grammar();
-        println!("klein plus expansion harder: {:#?}", generator.decls);
+        assert_eq!(generator.decls, vec![
+            Decl {
+                identifier: "E".to_string(),
+                maps_to: Binary {
+                    lhs: Box::new(Term(Identifier("II_PLUS_EXPAND_2_II".to_string()))),
+                    rhs: Box::new(Term(Identifier("b".to_string()))),
+                    bop: BinaryOperation::Concat,
+                },
+            },
+            Decl {
+                identifier: "II_PLUS_EXPAND_2_II".to_string(),
+                maps_to: Binary {
+                    lhs: Box::new(Term(StringLiteral(Regex::new("a").unwrap()))),
+                    rhs: Box::new(Binary {
+                        lhs: Box::new(Term(StringLiteral(Regex::new("a").unwrap()))),
+                        rhs: Box::new(Term(Identifier("II_PLUS_EXPAND_2_II".to_string()))),
+                        bop: BinaryOperation::Concat,
+                    }),
+                    bop: BinaryOperation::Or,
+                },
+            }
+        ])
     }
 
     #[test]
@@ -237,7 +260,24 @@ terminal     -> REGEX
         let g = r#"E -> "a"+"#;
         let mut generator = LrAugmenter::new(g).unwrap();
         generator.augment_grammar();
-        println!("klein plus expansion: {:#?}", generator.decls);
+        assert_eq!(generator.decls, vec![
+            Decl {
+                identifier: "E".to_string(),
+                maps_to: Term(Identifier("II_PLUS_EXPAND_2_II".to_string())),
+            },
+            Decl {
+                identifier: "II_PLUS_EXPAND_2_II".to_string(),
+                maps_to: Binary {
+                    lhs: Box::new(Term(StringLiteral(Regex::new("a").unwrap()))),
+                    rhs: Box::new(Binary {
+                        lhs: Box::new(Term(StringLiteral(Regex::new("a").unwrap()))),
+                        rhs: Box::new(Term(Identifier("II_PLUS_EXPAND_2_II".to_string()))),
+                        bop: BinaryOperation::Concat,
+                    }),
+                    bop: BinaryOperation::Or,
+                },
+            }
+        ])
     }
 
     #[test]
