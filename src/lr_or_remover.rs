@@ -40,28 +40,27 @@ fn transform_decl(arr: &mut Vec<Decl>, decl: lr_unary_remover::Decl) {
 
 fn transform_nt(arr: &mut Vec<Decl>, nt: lr_unary_remover::NonTerminal) -> NonTerminal {
     match nt {
-        Binary { lhs, rhs, bop } => {
-            if bop == Concat {
-                return NonTerminal::Concat {
-                    lhs: Box::new(transform_nt(arr, *lhs)),
-                    rhs: Box::new(transform_nt(arr, *rhs)),
-                }
+        Binary { lhs, rhs, bop: Concat } => {
+            NonTerminal::Concat {
+                lhs: Box::new(transform_nt(arr, *lhs)),
+                rhs: Box::new(transform_nt(arr, *rhs)),
             }
-
+        }
+        Binary { lhs, rhs, bop: Or } => {
             let collected = collect_binary(*lhs, *rhs, Or);
-            let transformed:Vec<NonTerminal> =
+            let transformed: Vec<NonTerminal> =
                 collected.into_iter().map(|x| transform_nt(arr, x)).collect();
-            let id = format!("II_OR_EXPAND_{}_II", arr.len()+1);
+            let id = format!("II_OR_EXPAND_{}_II", arr.len() + 1);
             for ct in transformed {
                 arr.push(Decl {
                     identifier: id.clone(),
                     maps_to: ct,
                 })
             }
-            return Term(Identifier(id));
+            Term(Identifier(id))
         }
         lr_unary_remover::NonTerminal::Term(t) => {
-            return Term(t);
+            Term(t)
         }
     }
 }
@@ -85,7 +84,7 @@ fn collect_binary_helper(nt: lr_unary_remover::NonTerminal, p_bop: BinaryOperati
 
 fn collect_binary(lhs: lr_unary_remover::NonTerminal, rhs: lr_unary_remover::NonTerminal, bop: BinaryOperation) -> Vec<lr_unary_remover::NonTerminal> {
     let mut collected = collect_binary_helper(lhs, bop.clone());
-    collected.append(&mut collect_binary_helper(rhs, bop));
+    collected.push(rhs);
 
     return collected;
 }
@@ -218,36 +217,29 @@ mod test {
                 identifier: "II_INITIAL_PRODUCTION_II".to_string(),
                 maps_to: Term(Identifier("E".to_string())) }])
     }
+
     #[test]
-    fn check_compounded() {
-        let mut generator = LrAugmenter::new("E -> (A | B) | (C | D)").unwrap();
+    fn check_compounded_easy() {
+        let mut generator = LrAugmenter::new("E -> A | (B | C)").unwrap();
         generator.augment_grammar();
         generator.augment_grammar_with_starting_production();
         let u_free = remove_unary(generator.decls);
         assert_eq!(remove_or(u_free), vec![
             Decl {
                 identifier: "II_OR_EXPAND_1_II".to_string(),
-                maps_to: Term(Identifier("A".to_string()))
-            },
-            Decl {
-                identifier: "II_OR_EXPAND_1_II".to_string(),
                 maps_to: Term(Identifier("B".to_string()))
             },
             Decl {
-                identifier: "II_OR_EXPAND_2_II".to_string(),
+                identifier: "II_OR_EXPAND_1_II".to_string(),
                 maps_to: Term(Identifier("C".to_string()))
             },
             Decl {
-                identifier: "II_OR_EXPAND_2_II".to_string(),
-                maps_to: Term(Identifier("D".to_string()))
+                identifier: "II_OR_EXPAND_3_II".to_string(),
+                maps_to: Term(Identifier("A".to_string()))
             },
             Decl {
                 identifier: "II_OR_EXPAND_3_II".to_string(),
                 maps_to: Term(Identifier("II_OR_EXPAND_1_II".to_string()))
-            },
-            Decl {
-                identifier: "II_OR_EXPAND_3_II".to_string(),
-                maps_to: Term(Identifier("II_OR_EXPAND_2_II".to_string()))
             },
             Decl {
                 identifier: "E".to_string(),
@@ -256,6 +248,81 @@ mod test {
             Decl {
                 identifier: "II_INITIAL_PRODUCTION_II".to_string(),
                 maps_to: Term(Identifier("E".to_string()))
+            }])
+    }
+    #[test]
+    fn check_compounded_hard() {
+        let mut generator = LrAugmenter::new("E -> (A | B) | (C | D)").unwrap();
+        generator.augment_grammar();
+        generator.augment_grammar_with_starting_production();
+        let u_free = remove_unary(generator.decls);
+        assert_eq!(remove_or(u_free), vec![
+            Decl {
+                identifier: "II_OR_EXPAND_1_II".to_string(),
+                maps_to: Term(Identifier("C".to_string()))
+            },
+            Decl {
+                identifier: "II_OR_EXPAND_1_II".to_string(),
+                maps_to: Term(Identifier("D".to_string()))
+            },
+            Decl {
+                identifier: "II_OR_EXPAND_3_II".to_string(),
+                maps_to: Term(Identifier("A".to_string()))
+            },
+            Decl {
+                identifier: "II_OR_EXPAND_3_II".to_string(),
+                maps_to: Term(Identifier("B".to_string()))
+            },
+            Decl {
+                identifier: "II_OR_EXPAND_3_II".to_string(),
+                maps_to: Term(Identifier("II_OR_EXPAND_1_II".to_string()))
+            },
+            Decl {
+                identifier: "E".to_string(),
+                maps_to: Term(Identifier("II_OR_EXPAND_3_II".to_string()))
+            },
+            Decl {
+                identifier: "II_INITIAL_PRODUCTION_II".to_string(),
+                maps_to: Term(Identifier("E".to_string()))
+            }])
+    }
+
+    #[test]
+    fn check_compounded_harder() {
+        let mut generator = LrAugmenter::new("Ex -> (A | (B C)) | (D | E)").unwrap();
+        generator.augment_grammar();
+        generator.augment_grammar_with_starting_production();
+        let u_free = remove_unary(generator.decls);
+        assert_eq!(remove_or(u_free), vec![
+            Decl {
+                identifier: "II_OR_EXPAND_1_II".to_string(),
+                maps_to: Term(Identifier("D".to_string()))
+            },
+            Decl {
+                identifier: "II_OR_EXPAND_1_II".to_string(),
+                maps_to: Term(Identifier("E".to_string()))
+            },
+            Decl {
+                identifier: "II_OR_EXPAND_3_II".to_string(),
+                maps_to: Term(Identifier("A".to_string()))
+            },
+            Decl {
+                identifier: "II_OR_EXPAND_3_II".to_string(),
+                maps_to: Concat {
+                    lhs: Box::new(Term(Identifier("B".to_string()))),
+                    rhs: Box::new(Term(Identifier("C".to_string()))) }
+            },
+            Decl {
+                identifier: "II_OR_EXPAND_3_II".to_string(),
+                maps_to: Term(Identifier("II_OR_EXPAND_1_II".to_string()))
+            },
+            Decl {
+                identifier: "Ex".to_string(),
+                maps_to: Term(Identifier("II_OR_EXPAND_3_II".to_string()))
+            },
+            Decl {
+                identifier: "II_INITIAL_PRODUCTION_II".to_string(),
+                maps_to: Term(Identifier("Ex".to_string()))
             }])
     }
 }
