@@ -1,6 +1,4 @@
-use std::fmt::{Display, Formatter};
 use regex::Regex;
-use crate::lr_ast;
 use crate::lr_ast::Terminal::{Empty, Identifier, StringLiteral};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -60,7 +58,6 @@ impl Eq for Terminal {}
 
 #[cfg(test)]
 mod test {
-    use regex::Regex;
     use crate::lr_ast::Terminal::{Empty, Identifier};
 
     #[test]

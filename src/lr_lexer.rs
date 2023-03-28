@@ -38,6 +38,7 @@ pub(crate) struct Token {
     pub(crate) lexeme: String
 }
 
+#[derive(Debug)]
 pub(crate) struct LRLexer {
     pub(crate) lexed: Vec<Token<>>,
     pub(crate) idx: usize

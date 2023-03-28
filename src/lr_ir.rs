@@ -1,11 +1,6 @@
-use regex::Regex;
-use crate::lr_ast;
-use crate::lr_ast::{BinaryOperation, NonTerminal, Terminal};
-use crate::lr_ast::NonTerminal::{Binary, Unary};
-use crate::lr_ir::BinaryOperation::{Concat, Or};
-use crate::lr_ir::IrError::IllegalUnary;
-use crate::lr_ir::NonTerminal::Term;
-use crate::lr_ir::Terminal::{Empty, Identifier, StringLiteral};
+use crate::lr_ast::Terminal;
+use crate::lr_or_remover;
+use crate::lr_or_remover::NonTerminal;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Decl {
@@ -13,209 +8,236 @@ pub(crate) struct Decl {
     pub(crate) maps_to: Vec<Terminal>
 }
 
+pub(crate) fn to_ir(input: Vec<lr_or_remover::Decl>) -> Vec<Decl> {
+    let mut ret: Vec<Decl> = vec![];
 
-#[derive(Debug)]
-pub(crate) enum IrError {
-    IllegalUnary(lr_ast::NonTerminal)
+    for decl in input {
+        let transformed = transform(decl.maps_to);
+        ret.push(Decl {
+            identifier: decl.identifier.clone(),
+            maps_to: transformed,
+        });
+    }
+
+    ret
 }
 
-pub(crate) struct IrTransformer {
-    decls: Vec<Decl>
-}
+fn transform(nt: NonTerminal) -> Vec<Terminal> {
+    match nt {
+        NonTerminal::Concat { lhs, rhs } => {
+            let mut ret = transform(*lhs);
+            ret.append(&mut transform(*rhs));
 
-impl IrTransformer {
-    pub(crate) fn new() -> Self {
-        Self {
-            decls: vec![],
+            ret
         }
-    }
-    pub(crate) fn transform_decls(&mut self, input: Vec<lr_ast::Decl>) -> Result<(), IrError> {
-        for decl in input {
-            self.transform(decl)?;
-        }
-        Ok(())
-    }
-    fn transform(&mut self, decl: lr_ast::Decl) -> Result<(), IrError> {
-        self.transform_decl(decl)?;
-        Ok(())
-    }
-    fn transform_decl(&mut self, decl: lr_ast::Decl) -> Result<(), IrError> {
-        /*match decl.maps_to {
-            NonTerminal::Binary { lhs, rhs, bop } => {
-                self.transform_binary(decl.identifier, *lhs, *rhs, bop)?
-            }
-            NonTerminal::Unary { ref uop, ref lhs } => Err(IllegalUnary(nt.clone())),
-            Term(t) => self.decls.push(Decl {
-                identifier: decl.identifier,
-                maps_to: vec![t],
-            })
-        }*/
-
-
-        Ok(())
-    }
-    fn transform_binary(&mut self, name: String, lhs: NonTerminal, rhs: NonTerminal, bop: BinaryOperation) -> Result<Vec<Terminal>, IrError> {
-        let collected = self.collect_binary(lhs, rhs, bop)?;
-        /*match bop {
-            Or => {}
-            Concat => {}
-        }*/
-        Ok(vec![Terminal::Empty])
-    }
-
-    fn collect_binary_helper(&self, nt: NonTerminal, p_bop: BinaryOperation) -> Result<Vec<lr_ast::NonTerminal>, IrError> {
-        let mut collected:Vec<NonTerminal> = vec![];
-        if let Binary { lhs, rhs, bop } = nt.clone() {
-            if bop == p_bop {
-                collected.append(&mut self.collect_binary(*lhs, *rhs, bop)?)
-            }
-            else {
-                collected.push(nt);
-            }
-        }
-        else {
-            collected.push(nt);
-        }
-
-        Ok(collected)
-    }
-
-    fn collect_binary(&self, lhs: NonTerminal, rhs: NonTerminal, bop: BinaryOperation) -> Result<Vec<lr_ast::NonTerminal>, IrError> {
-        let mut collected = self.collect_binary_helper(lhs, bop.clone())?;
-        collected.append(&mut self.collect_binary_helper(rhs, bop)?);
-
-        return Ok(collected);
+        NonTerminal::Term(t) => vec![t]
     }
 }
-
 
 #[cfg(test)]
 pub mod test {
-    use crate::lr_ast::BinaryOperation;
-    use crate::lr_ast::NonTerminal::Binary;
-    use crate::lr_ir::IrTransformer;
-    use crate::lr_ir::NonTerminal::{Term};
-    use crate::lr_ir::Terminal::Identifier;
+    use regex::Regex;
+    use crate::lr_ast::Terminal;
+    use crate::lr_ir::{Decl, to_ir};
+    use crate::{lr_or_remover, lr_unary_remover};
+    use crate::lr_ast::Terminal::StringLiteral;
+    use crate::lr_or_remover::remove_or;
+    use crate::lr_parser::LRParser;
+    use crate::lr_starting_production_adder::augment_grammar_with_starting_production;
+    use crate::lr_unary_remover::remove_unary;
 
-
-    #[test]
-    fn test_homogenous_binary_collection() {
-        let transformer:IrTransformer = IrTransformer::new();
-        let r = transformer.collect_binary(
-            Binary {
-                lhs: Box::new(Term(Identifier("a".to_string()))),
-                rhs: Box::new(Term(Identifier("b".to_string()))),
-                bop: BinaryOperation::Or,
-            },
-            Term(Identifier("c".to_string())),
-            BinaryOperation::Or
-        ).unwrap();
-        assert_eq!(r, vec![
-            Term(Identifier("a".to_string())),
-            Term(Identifier("b".to_string())),
-            Term(Identifier("c".to_string()))
-        ])
+    fn build_testing_data(input: &str) -> Vec<lr_or_remover::Decl>{
+        let parsed = LRParser::new(input).parse().unwrap();
+        let mut parsed = remove_unary(parsed);
+        augment_grammar_with_starting_production(&mut parsed);
+        let parsed = remove_or(parsed);
+        return parsed;
     }
 
     #[test]
-    fn test_homogenous_binary_collection_3_ply() {
-        let transformer:IrTransformer = IrTransformer::new();
-        let r = transformer.collect_binary(
-            Binary {
-                lhs: Box::new(Binary {
-                    lhs: Box::new(Term(Identifier("a".to_string()))),
-                    rhs: Box::new(Term(Identifier("b".to_string()))),
-                    bop: BinaryOperation::Or,
-                }),
-                rhs: Box::new(Term(Identifier("c".to_string()))),
-                bop: BinaryOperation::Or,
+    fn simple_flatten() {
+        assert_eq!(to_ir(build_testing_data("E -> a b c")), vec![
+            Decl {
+                identifier: "E".to_string(),
+                maps_to: vec![
+                    Terminal::Identifier("a".to_string()),
+                    Terminal::Identifier("b".to_string()),
+                    Terminal::Identifier("c".to_string())
+                ],
             },
-            Term(Identifier("d".to_string())),
-            BinaryOperation::Or
-        ).unwrap();
-        assert_eq!(r, vec![
-            Term(Identifier("a".to_string())),
-            Term(Identifier("b".to_string())),
-            Term(Identifier("c".to_string())),
-            Term(Identifier("d".to_string())),
-        ])
-    }
-
-    fn test_homogenous_binary_collection_4_ply() {
-        let transformer:IrTransformer = IrTransformer::new();
-        let r = transformer.collect_binary(
-            Binary {
-                lhs: Box::new(Binary {
-                    lhs: Box::new(Binary {
-                        lhs: Box::new(Term(Identifier("a".to_string()))),
-                        rhs: Box::new(Term(Identifier("b".to_string()))),
-                        bop: BinaryOperation::Or,
-                    }),
-                    rhs: Box::new(Term(Identifier("c".to_string()))),
-                    bop: BinaryOperation::Or,
-                }),
-                rhs: Box::new(Term(Identifier("d".to_string()))),
-                bop: BinaryOperation::Or,
-            },
-            Term(Identifier("e".to_string())),
-            BinaryOperation::Or
-        ).unwrap();
-        assert_eq!(r, vec![
-            Term(Identifier("a".to_string())),
-            Term(Identifier("b".to_string())),
-            Term(Identifier("c".to_string())),
-            Term(Identifier("d".to_string())),
-            Term(Identifier("e".to_string())),
+            Decl {
+                identifier: "II_INITIAL_PRODUCTION_II".to_string(),
+                maps_to: vec![Terminal::Identifier("E".to_string())],
+            }
         ])
     }
 
     #[test]
-    fn test_heterogenous_binary_collection_3_ply() {
-        let transformer:IrTransformer = IrTransformer::new();
-        let r = transformer.collect_binary(
-            Binary {
-                lhs: Box::new(Binary {
-                    lhs: Box::new(Term(Identifier("a".to_string()))),
-                    rhs: Box::new(Term(Identifier("b".to_string()))),
-                    bop: BinaryOperation::Concat,
-                }),
-                rhs: Box::new(Term(Identifier("c".to_string()))),
-                bop: BinaryOperation::Or,
+    fn harder_flatten() {
+        assert_eq!(to_ir(build_testing_data("E -> a b | c d")), vec![
+            Decl {
+                identifier: "II_E_PRIME_OR_EXPAND_II".to_string(),
+                maps_to: vec![
+                    Terminal::Identifier("a".to_string()),
+                    Terminal::Identifier("b".to_string()),
+                ],
             },
-            Term(Identifier("d".to_string())),
-            BinaryOperation::Or
-        ).unwrap();
-        assert_eq!(r, vec![
-            Binary {
-                    lhs: Box::new(Term(Identifier("a".to_string()))),
-                    rhs: Box::new(Term(Identifier("b".to_string()))),
-                    bop: BinaryOperation::Concat,
-                },
-            Term(Identifier("c".to_string())),
-            Term(Identifier("d".to_string())),
+            Decl {
+                identifier: "II_E_PRIME_OR_EXPAND_II".to_string(),
+                maps_to: vec![
+                    Terminal::Identifier("c".to_string()),
+                    Terminal::Identifier("d".to_string()),
+                ],
+            },
+            Decl {
+                identifier: "E".to_string(),
+                maps_to: vec![Terminal::Identifier("II_E_PRIME_OR_EXPAND_II".to_string())],
+            },
+            Decl {
+                identifier: "II_INITIAL_PRODUCTION_II".to_string(),
+                maps_to: vec![Terminal::Identifier("E".to_string())],
+            }
         ])
     }
 
-    /*#[test]
-    fn test_heterogenous_binary_collection_3_ply_internal() {
-        let transformer: IrTransformer = IrTransformer::new();
-        let r = transformer.collect_binary(
-            Binary {
-                lhs:,
-                rhs: Box::new(Term(Identifier("c".to_string()))),
-                bop: BinaryOperation::Concat,
+    #[test]
+    fn full_pipeline_check() {
+        let dat = build_testing_data(lr_unary_remover::tests::SELF_G);
+        assert_eq!(to_ir(dat), [
+            Decl {
+                identifier: "decl".to_string(),
+                maps_to: vec![
+                    Terminal::Identifier(
+                        "IDENTIFIER".to_string(),
+                    ),
+                    StringLiteral(
+                        Regex::new("->").unwrap(),
+                    ),
+                    Terminal::Identifier(
+                        "nonterminal".to_string(),
+                    ),
+                ],
             },
-            Term(Identifier("d".to_string())),
-            BinaryOperation::Or
-        ).unwrap();
-        assert_eq!(r, vec![
-            Binary {
-                lhs: Box::new(Term(Identifier("a".to_string()))),
-                rhs: Box::new(Term(Identifier("b".to_string()))),
-                bop: BinaryOperation::Concat,
+            Decl {
+                identifier: "II_nonterminal_PRIME_OR_EXPAND_II".to_string(),
+                maps_to: vec![
+                    Terminal::Identifier(
+                        "terminal".to_string(),
+                    ),
+                ],
             },
-            Term(Identifier("c".to_string())),
-            Term(Identifier("d".to_string())),
+            Decl {
+                identifier: "II_nonterminal_PRIME_OR_EXPAND_II".to_string(),
+                maps_to: vec![
+                    Terminal::Identifier(
+                        "nonterminal".to_string(),
+                    ),
+                    StringLiteral(
+                        Regex::new(r"\|").unwrap(),
+                    ),
+                    Terminal::Identifier(
+                        "nonterminal".to_string(),
+                    ),
+                ],
+            },
+            Decl {
+                identifier: "II_nonterminal_PRIME_OR_EXPAND_II".to_string(),
+                maps_to: vec![
+                    Terminal::Identifier(
+                        "nonterminal".to_string(),
+                    ),
+                    Terminal::Identifier(
+                        "nonterminal".to_string(),
+                    ),
+                ],
+            },
+            Decl {
+                identifier: "II_nonterminal_PRIME_OR_EXPAND_II".to_string(),
+                maps_to: vec![
+                    Terminal::Identifier(
+                        "nonterminal".to_string(),
+                    ),
+                    StringLiteral(
+                        Regex::new(r"\+").unwrap(),
+                    ),
+                ],
+            },
+            Decl {
+                identifier: "II_nonterminal_PRIME_OR_EXPAND_II".to_string(),
+                maps_to: vec![
+                    Terminal::Identifier(
+                        "nonterminal".to_string(),
+                    ),
+                    StringLiteral(
+                        Regex::new(r"\*").unwrap(),
+                    ),
+                ],
+            },
+            Decl {
+                identifier: "II_nonterminal_PRIME_OR_EXPAND_II".to_string(),
+                maps_to: vec![
+                    Terminal::Identifier(
+                        "nonterminal".to_string(),
+                    ),
+                    StringLiteral(
+                        Regex::new(r"\?").unwrap(),
+                    ),
+                ],
+            },
+            Decl {
+                identifier: "II_nonterminal_PRIME_OR_EXPAND_II".to_string(),
+                maps_to: vec![
+                    StringLiteral(
+                        Regex::new(r"\(").unwrap(),
+                    ),
+                    Terminal::Identifier(
+                        "nonterminal".to_string(),
+                    ),
+                    StringLiteral(
+                        Regex::new(r"\)").unwrap(),
+                    ),
+                ],
+            },
+            Decl {
+                identifier: "nonterminal".to_string(),
+                maps_to: vec![
+                    Terminal::Identifier(
+                        "II_nonterminal_PRIME_OR_EXPAND_II".to_string(),
+                    ),
+                ],
+            },
+            Decl {
+                identifier: "II_terminal_PRIME_OR_EXPAND_II".to_string(),
+                maps_to: vec![
+                    Terminal::Identifier(
+                        "REGEX".to_string(),
+                    ),
+                ],
+            },
+            Decl {
+                identifier: "II_terminal_PRIME_OR_EXPAND_II".to_string(),
+                maps_to: vec![
+                    Terminal::Identifier(
+                        "IDENTIFIER".to_string(),
+                    ),
+                ],
+            },
+            Decl {
+                identifier: "terminal".to_string(),
+                maps_to: vec![
+                    Terminal::Identifier(
+                        "II_terminal_PRIME_OR_EXPAND_II".to_string(),
+                    ),
+                ],
+            },
+            Decl {
+                identifier: "II_INITIAL_PRODUCTION_II".to_string(),
+                maps_to: vec![
+                    Terminal::Identifier(
+                        "decl".to_string(),
+                    ),
+                ],
+            },
         ])
-    }*/
+    }
 }

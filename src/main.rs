@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 use std::fs;
-use crate::nimbus_lexer::TokenType;
 
 mod nimbus_lexer;
 mod nimbus_parser;
@@ -10,9 +9,9 @@ mod lr_lexer;
 mod lr_ast;
 mod lr_parser;
 mod lr_ir;
-mod lr_augmenter;
 mod lr_unary_remover;
 mod lr_or_remover;
+mod lr_starting_production_adder;
 
 
 fn main() {

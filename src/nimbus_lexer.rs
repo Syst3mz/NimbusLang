@@ -1,4 +1,4 @@
-use std::fmt::{Display, Formatter};
+
 use logos::{Lexer, Logos, Span};
 use strum::Display;
 

@@ -67,38 +67,14 @@ impl<'source> LRParser {
 
 
     fn parse_non_terminal(&mut self) -> Result<NonTerminal, ParserErr> {
-        let mut lhs = self.parse_unary()?;
+        let mut lhs = self.parse_concat()?;
 
         while let Some(next_tok) = self.lexed.next() {
             match next_tok.token_type {
-                Identifier => {
-                    if let Some(mb_arrow) = self.lexed.current() {
-                        if mb_arrow.token_type == Arrow {
-                            self.lexed.rewind();
-                            return Ok(lhs)
-                        }
-                    }
-
-                    self.lexed.rewind();
-                    lhs = Binary {
-                        lhs: Box::new(lhs),
-                        rhs: Box::new(self.parse_unary()?),
-                        bop: BinaryOperation::Concat,
-                    };
-                },
-
-                StringLiteral | LParen => {
-                    self.lexed.rewind();
-                    lhs = Binary {
-                        lhs: Box::new(lhs),
-                        rhs: Box::new(self.parse_unary()?),
-                        bop: BinaryOperation::Concat,
-                    };
-                }
                 LRToken::Or => {
                     lhs = Binary {
                         lhs: Box::new(lhs),
-                        rhs: Box::new(self.parse_unary()?),
+                        rhs: Box::new(self.parse_concat()?),
                         bop: BinaryOperation::Or,
                     }
                 }
@@ -110,6 +86,46 @@ impl<'source> LRParser {
         }
 
         return Ok(lhs)
+    }
+
+    fn parse_concat(&mut self) -> Result<NonTerminal, ParserErr> {
+        let mut lhs = self.parse_unary()?;
+        while let Some(next_tok) = self.lexed.next() {
+            match next_tok.token_type {
+                StringLiteral | LParen => {
+                    self.lexed.rewind();
+                    lhs = Binary {
+                        lhs: Box::new(lhs),
+                        rhs: Box::new(self.parse_unary()?),
+                        bop: BinaryOperation::Concat,
+                    };
+                }
+                Identifier => {
+                    if let Some(next_next_tok) = self.lexed.next() {
+                        if next_next_tok.token_type == Arrow {
+                            self.lexed.rewind();
+                            self.lexed.rewind();
+                            return Ok(lhs);
+                        }
+                    }
+
+                    self.lexed.rewind();
+                    self.lexed.rewind();
+                    lhs = Binary {
+                        lhs: Box::new(lhs),
+                        rhs: Box::new(self.parse_unary()?),
+                        bop: BinaryOperation::Concat,
+                    };
+
+                }
+                _ => {
+                    self.lexed.rewind();
+                    break;
+                }
+            };
+        }
+
+        return Ok(lhs);
     }
 
     fn parse_unary(&mut self) -> Result<NonTerminal, ParserErr> {
@@ -189,7 +205,6 @@ pub(crate) mod test {
     use crate::lr_ast::{BinaryOperation, Decl, UnaryOperation};
     use crate::lr_ast::NonTerminal::{Binary, Term, Unary};
     use crate::lr_ast::Terminal::{Identifier, StringLiteral};
-    use crate::lr_lexer::{LRLexer, LRToken, Token};
     use crate::lr_parser::LRParser;
 
 
@@ -364,6 +379,110 @@ pub(crate) mod test {
                     }),
                     rhs: Box::new(Term(Identifier("b".to_string()))),
                     bop: BinaryOperation::Concat,
+                },
+            }
+        ])
+    }
+
+    #[test]
+    fn check_concat_binds_tighter_than_or() {
+        let g = r#"decl -> a | b c"#;
+        let r = LRParser::new(g).parse();
+        assert_eq!(r.unwrap(), vec![
+            Decl {
+                identifier: "decl".to_string(),
+                maps_to: Binary {
+                    lhs: Box::new(Term(Identifier("a".to_string()))),
+                    rhs: Box::new(Binary {
+                        lhs: Box::new(Term(Identifier("b".to_string()))),
+                        rhs: Box::new(Term(Identifier("c".to_string()))),
+                        bop: BinaryOperation::Concat,
+                    }),
+                    bop: BinaryOperation::Or,
+                },
+            }
+        ])
+    }
+
+    #[test]
+    fn check_concat_order() {
+        let g = r#"decl -> b c d"#;
+        let r = LRParser::new(g).parse();
+        assert_eq!(r.unwrap(), vec![Decl {
+            identifier: "decl".to_string(),
+            maps_to: Binary {
+                lhs: Box::new(Binary {
+                    lhs: Box::new(Term(Identifier("b".to_string()))),
+                    rhs: Box::new(Term(Identifier("c".to_string()))),
+                    bop: BinaryOperation::Concat,
+                }),
+                rhs: Box::new(Term(Identifier("d".to_string()))),
+                bop: BinaryOperation::Concat,
+            },
+        }])
+    }
+
+    #[test]
+    fn check_or_ordering() {
+        let g = r#"decl -> a | b | c"#;
+        let r = LRParser::new(g).parse();
+        assert_eq!(r.unwrap(), vec![
+            Decl {
+                identifier: "decl".to_string(),
+                maps_to: Binary {
+                    lhs: Box::new(Binary {
+                        lhs: Box::new(Term(Identifier("a".to_string()))),
+                        rhs: Box::new(Term(Identifier("b".to_string()))),
+                        bop: BinaryOperation::Or,
+                    }),
+                    rhs: Box::new(Term(Identifier("c".to_string()))),
+                    bop: BinaryOperation::Or,
+                },
+            }
+        ])
+    }
+
+    #[test]
+    fn check_concat_order_harder() {
+        let g = r#"decl -> b c d e"#;
+        let r = LRParser::new(g).parse();
+        assert_eq!(r.unwrap(), vec![Decl {
+            identifier: "decl".to_string(),
+            maps_to: Binary {
+                lhs: Box::new(Binary {
+                    lhs: Box::new(Binary {
+                        lhs: Box::new(Term(Identifier("b".to_string()))),
+                        rhs: Box::new(Term(Identifier("c".to_string()))),
+                        bop: BinaryOperation::Concat,
+                    }),
+                    rhs: Box::new(Term(Identifier("d".to_string()))),
+                    bop: BinaryOperation::Concat,
+                }),
+                rhs: Box::new(Term(Identifier("e".to_string()))),
+                bop: BinaryOperation::Concat,
+            },
+        }])
+    }
+
+    #[test]
+    fn check_concat_binds_tighter_than_or_harder() {
+        let g = r#"decl -> a | b c d"#;
+        let r = LRParser::new(g).parse();
+        assert_eq!(r.unwrap(), vec![
+            Decl {
+                identifier: "decl".to_string(),
+                maps_to: Binary {
+                    lhs: Box::new(Term(Identifier("a".to_string()))),
+                    rhs: Box::new(Binary {
+                        lhs: Box::new(Binary {
+                            lhs: Box::new(Term(Identifier("b".to_string()))),
+                            rhs: Box::new(Term(Identifier("c".to_string()))),
+                            bop: BinaryOperation::Concat,
+                        }),
+                        rhs: Box::new(Term(Identifier("d".to_string()))),
+                        bop: BinaryOperation::Concat,
+                    }),
+                    bop: BinaryOperation::Or,
                 },
             }
         ])
