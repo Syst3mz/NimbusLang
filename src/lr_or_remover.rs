@@ -46,7 +46,7 @@ fn transform_nt(nt: lr_unary_remover::NonTerminal, name: &str, ret: &mut Vec<Dec
             let collected = collect_binary(*lhs, *rhs, Or);
             let transformed: Vec<NonTerminal> =
                 collected.into_iter().map(|x| transform_nt(x, name, ret)).collect();
-            let id = format!("II_{name}_PRIME_OR_EXPAND_II");
+            let id = format!("{name}_PRIME");
             for ct in transformed {
                 ret.push(Decl {
                     identifier: id.clone(),
@@ -106,7 +106,7 @@ mod test {
     pub fn check_no_or_easy() {
         assert_eq!(remove_or(build_testing_data("E -> A | B")), vec![
             Decl {
-                identifier: "II_E_PRIME_OR_EXPAND_II".to_string(),
+                identifier: "E_PRIME".to_string(),
                 maps_to: Term(
                     Identifier(
                         "A".to_string(),
@@ -114,7 +114,7 @@ mod test {
                 ),
             },
             Decl {
-                identifier: "II_E_PRIME_OR_EXPAND_II".to_string(),
+                identifier: "E_PRIME".to_string(),
                 maps_to: Term(
                     Identifier(
                         "B".to_string(),
@@ -126,7 +126,7 @@ mod test {
                 identifier: "E".to_string(),
                 maps_to: Term(
                     Identifier(
-                        "II_E_PRIME_OR_EXPAND_II".to_string(),
+                        "E_PRIME".to_string(),
                     ),
                 ),
             },
@@ -145,7 +145,7 @@ mod test {
     pub fn check_no_or_easy_3zy() {
         assert_eq!(remove_or(build_testing_data("E -> A | B | C")), vec![
             Decl {
-                identifier: "II_E_PRIME_OR_EXPAND_II".to_string(),
+                identifier: "E_PRIME".to_string(),
                 maps_to: Term(
                     Identifier(
                         "A".to_string(),
@@ -153,7 +153,7 @@ mod test {
                 ),
             },
             Decl {
-                identifier: "II_E_PRIME_OR_EXPAND_II".to_string(),
+                identifier: "E_PRIME".to_string(),
                 maps_to: Term(
                     Identifier(
                         "B".to_string(),
@@ -161,7 +161,7 @@ mod test {
                 ),
             },
             Decl {
-                identifier: "II_E_PRIME_OR_EXPAND_II".to_string(),
+                identifier: "E_PRIME".to_string(),
                 maps_to: Term(
                     Identifier(
                         "C".to_string(),
@@ -173,7 +173,7 @@ mod test {
                 identifier: "E".to_string(),
                 maps_to: Term(
                     Identifier(
-                        "II_E_PRIME_OR_EXPAND_II".to_string(),
+                        "E_PRIME".to_string(),
                     ),
                 ),
             },
@@ -192,7 +192,7 @@ mod test {
     pub fn check_no_or_concat_and_or() {
         assert_eq!(remove_or(build_testing_data("E -> A B C | D")), vec![
             Decl {
-            identifier: "II_E_PRIME_OR_EXPAND_II".to_string(),
+            identifier: "E_PRIME".to_string(),
             maps_to: Concat {
                     lhs: Box::new(Concat {
                         lhs: Box::new(Term(Identifier("A".to_string()))),
@@ -201,12 +201,12 @@ mod test {
                     rhs: Box::new(Term(Identifier("C".to_string()))) }
             },
             Decl {
-                identifier: "II_E_PRIME_OR_EXPAND_II".to_string(),
+                identifier: "E_PRIME".to_string(),
                 maps_to: Term(Identifier("D".to_string()))
             },
             Decl {
                 identifier: "E".to_string(),
-                maps_to: Term(Identifier("II_E_PRIME_OR_EXPAND_II".to_string()))
+                maps_to: Term(Identifier("E_PRIME".to_string()))
             },
             Decl {
                 identifier: "II_INITIAL_PRODUCTION_II".to_string(),
@@ -218,20 +218,20 @@ mod test {
         let dat = build_testing_data("E -> A | (B | C)");
         assert_eq!(remove_or(dat), vec![
             Decl {
-                identifier: "II_E_PRIME_OR_EXPAND_II".to_string(),
+                identifier: "E_PRIME".to_string(),
                 maps_to: Term(Identifier("A".to_string()))
             },
             Decl {
-                identifier: "II_E_PRIME_OR_EXPAND_II".to_string(),
+                identifier: "E_PRIME".to_string(),
                 maps_to: Term(Identifier("B".to_string()))
             },
             Decl {
-                identifier: "II_E_PRIME_OR_EXPAND_II".to_string(),
+                identifier: "E_PRIME".to_string(),
                 maps_to: Term(Identifier("C".to_string()))
             },
             Decl {
                 identifier: "E".to_string(),
-                maps_to: Term(Identifier("II_E_PRIME_OR_EXPAND_II".to_string()))
+                maps_to: Term(Identifier("E_PRIME".to_string()))
             },
             Decl {
                 identifier: "II_INITIAL_PRODUCTION_II".to_string(),

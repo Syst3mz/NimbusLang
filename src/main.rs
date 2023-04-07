@@ -12,6 +12,7 @@ mod lr_ir;
 mod lr_unary_remover;
 mod lr_or_remover;
 mod lr_starting_production_adder;
+mod lr_parser_generator;
 
 
 fn main() {

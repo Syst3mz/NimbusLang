@@ -61,7 +61,7 @@ pub mod test {
 
     #[test]
     pub fn find_dangling_ids_check() {
-        let u_free = build_testing_data(lr_unary_remover::tests::SELF_G);
+        let u_free = build_testing_data(lr_unary_remover::tests::WRONG_SELF_G);
         assert_eq!(vec!["decl"], find_dangling_ids(&u_free));
     }
 }

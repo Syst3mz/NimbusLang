@@ -68,7 +68,7 @@ fn transform_unary(uop: UnaryOperation, lhs: lr_ast::NonTerminal, name: &str, re
 }
 
 fn transform_klein_plus(lhs: lr_ast::NonTerminal, name: &str, message: &str, ret: &mut Vec<Decl>) -> NonTerminal {
-    let id = format!("II_{name}_PRIME_{message}_II");
+    let id = format!("{name}_PRIME_{message}");
     let lhs = transform_non_terminal(lhs, name, ret);
     ret.push(Decl {
         identifier: id.clone(),
@@ -95,7 +95,7 @@ pub mod tests {
     use crate::lr_unary_remover::{Decl, remove_unary};
     use crate::lr_unary_remover::NonTerminal::{Binary, Term};
 
-    pub static SELF_G: &str = r#"decl         -> IDENTIFIER "->" nonterminal
+    pub static WRONG_SELF_G: &str = r#"decl         -> IDENTIFIER "->" nonterminal
 nonterminal  -> terminal
 			  | nonterminal "\|" nonterminal
 			  | nonterminal nonterminal
@@ -116,12 +116,12 @@ terminal     -> REGEX
         let g = r#"E -> "a"+ b"#;
         assert_eq!(build_testing_data(g), vec![
             Decl {
-                identifier: "II_E_PRIME_PLUS_EXPAND_II".to_string(),
+                identifier: "E_PRIME_PLUS_EXPAND".to_string(),
                 maps_to: Binary {
                     lhs: Box::new(Term(StringLiteral(Regex::new("a").unwrap()))),
                     rhs: Box::new(Binary {
                         lhs: Box::new(Term(StringLiteral(Regex::new("a").unwrap()))),
-                        rhs: Box::new(Term(Identifier("II_E_PRIME_PLUS_EXPAND_II".to_string()))),
+                        rhs: Box::new(Term(Identifier("E_PRIME_PLUS_EXPAND".to_string()))),
                         bop: Concat,
                     }),
                     bop: Or,
@@ -130,7 +130,7 @@ terminal     -> REGEX
             Decl {
                 identifier: "E".to_string(),
                 maps_to: Binary {
-                    lhs: Box::new(Term(Identifier("II_E_PRIME_PLUS_EXPAND_II".to_string()))),
+                    lhs: Box::new(Term(Identifier("E_PRIME_PLUS_EXPAND".to_string()))),
                     rhs: Box::new(Term(Identifier("b".to_string()))),
                     bop: Concat,
                 },
@@ -177,12 +177,12 @@ terminal     -> REGEX
         let g = r#"E -> "a"+"#;
         assert_eq!(build_testing_data(g), vec![
             Decl {
-                identifier: "II_E_PRIME_PLUS_EXPAND_II".to_string(),
+                identifier: "E_PRIME_PLUS_EXPAND".to_string(),
                 maps_to: Binary {
                     lhs: Box::new(Term(StringLiteral(Regex::new("a").unwrap()))),
                     rhs: Box::new(Binary {
                         lhs: Box::new(Term(StringLiteral(Regex::new("a").unwrap()))),
-                        rhs: Box::new(Term(Identifier("II_E_PRIME_PLUS_EXPAND_II".to_string()))),
+                        rhs: Box::new(Term(Identifier("E_PRIME_PLUS_EXPAND".to_string()))),
                         bop: Concat,
                     }),
                     bop: Or,
@@ -190,7 +190,7 @@ terminal     -> REGEX
             },
             Decl {
                 identifier: "E".to_string(),
-                maps_to: Term(Identifier("II_E_PRIME_PLUS_EXPAND_II".to_string())),
+                maps_to: Term(Identifier("E_PRIME_PLUS_EXPAND".to_string())),
             }
         ])
     }
@@ -200,7 +200,7 @@ terminal     -> REGEX
         let g = r#"E -> "a"*"#;
         assert_eq!(build_testing_data(g), vec![
             Decl {
-                identifier: "II_E_PRIME_STAR_EXPAND_II".to_string(),
+                identifier: "E_PRIME_STAR_EXPAND".to_string(),
                 maps_to: Binary {
                     lhs: Box::new(Term(
                         StringLiteral(
@@ -215,7 +215,7 @@ terminal     -> REGEX
                         )),
                         rhs: Box::new(Term(
                             Identifier(
-                                "II_E_PRIME_STAR_EXPAND_II".to_string(),
+                                "E_PRIME_STAR_EXPAND".to_string(),
                             ),
                         )),
                         bop: Concat,
@@ -226,7 +226,7 @@ terminal     -> REGEX
             Decl {
                 identifier: "E".to_string(),
                 maps_to: Binary {
-                    lhs: Box::new(Term(Identifier("II_E_PRIME_STAR_EXPAND_II".to_string()))),
+                    lhs: Box::new(Term(Identifier("E_PRIME_STAR_EXPAND".to_string()))),
                     rhs: Box::new(Term(Empty)),
                     bop: Or,
                 },

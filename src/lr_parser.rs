@@ -501,6 +501,6 @@ nonterminal  -> terminal
 terminal     -> REGEX
 			  | IDENTIFIER"#;
         let r = LRParser::new(g).parse();
-        println!("parse self: {:#?}", r.unwrap());
+        r.unwrap();
     }
 }
